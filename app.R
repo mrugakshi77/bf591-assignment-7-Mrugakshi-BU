@@ -11,7 +11,49 @@ library(colourpicker) # you might need to install this.
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
-    
+    titlePanel("Mrugakshi Chidrawar : BF528 - Assignment 7"),
+    sidebarLayout(
+        sidebarPanel(
+            fileInput("exp_file", label="Load differential expression results:", accept = c(".csv")),
+            
+            p('A volcano plot can be generated with "log2 fold-change" on the x-axis and "p-adjusted" on the y-axis.'),
+            
+            radioButtons("x_axis", "Choose the column for the X-axis:", 'log2FoldChange',
+                         choices = c('baseMean',
+                                     'log2FoldChange',
+                                     'lfcSE',
+                                     'stat',
+                                     'pvalue',
+                                     'padj')),
+            
+            radioButtons("y_axis", "Choose the column for the Y-axis:", 'padj',
+                         choices = c('baseMean',
+                                     'log2FoldChange',
+                                     'lfcSE',
+                                     'stat',
+                                     'pvalue',
+                                     'padj')),
+            
+            colourInput("base_point_col", 'Base point color', "#FFCF56"),
+            
+            colourInput("highlight_col", 'Highlight point color', "#8DC0E3"),
+            
+            sliderInput(inputId = "p_magnitude", min = -300, max = 0,
+                        label = "Select the magnitude of the p adjusted coloring:", value = -150, step = 1),
+            
+            submitButton("Submit", icon("check")),
+        ),
+        mainPanel(
+            tabsetPanel(
+                tabPanel("Table",
+                         tableOutput('table')
+                ),
+                tabPanel("Plot",
+                         plotOutput('volcano')
+                )
+            )
+        )
+    )
 )
 
 # Define server logic required to draw a histogram
@@ -27,7 +69,13 @@ server <- function(input, output, session) {
     #' read.csv. Return this data frame in the normal return() style.
     load_data <- reactive({
         
-        return()
+        file <- input$exp_file
+        
+        if(is.null(file)) {     
+            return(NULL) 
+        }
+        
+        return(read.csv(file$datapath, header = TRUE))
     })
     
     #' Volcano plot
@@ -53,7 +101,23 @@ server <- function(input, output, session) {
     volcano_plot <-
         function(dataf, x_name, y_name, slider, color1, color2) {
 
-            return()
+            file <- input$exp_file
+            
+            if(is.null(file)) {     
+                return(NULL) 
+            }
+            
+            y_label = sprintf("-log10(%s)", y_name)
+            col_label = sprintf("padj < (1*(10^%s))", slider)
+            
+            vol_plot <-  ggplot(dataf, aes(x = get(x_name), y = -log10(get(y_name)), color = padj < (1*(10**slider)))) +
+                geom_point() +
+                scale_colour_manual(name = col_label, values = setNames(c(color1, color2, 'grey'),c(T, F, NA))) +
+                xlab(x_name) +
+                ylab(y_label) +
+                theme_linedraw()
+
+            return(vol_plot)
         }
     
     #' Draw and filter table
@@ -77,16 +141,26 @@ server <- function(input, output, session) {
     #'gene2  3550.435  -6.183714 0.1792708 -34.49369 9.97262e-261 9.11398e-257
     draw_table <- function(dataf, slider) {
         
-        return()
+        file <- input$exp_file
+        
+        if(is.null(file)) {     
+            return(NULL) 
+        }
+
+        dataf <- dplyr::filter(dataf, dataf$padj < (1*(10**slider)))
+        dataf$pvalue <- lapply(dataf$pvalue, formatC, digits = 9)
+        dataf$padj <- lapply(dataf$padj, formatC, digits = 9)
+    
+        return(dataf)
     }
     
     #' These outputs aren't really functions, so they don't get a full skeleton, 
     #' but use the renderPlot() and renderTabel() functions to return() a plot 
     #' or table object, and those will be displayed in your application.
-    output$volcano <- NULL # replace this NULL
+    output$volcano <- renderPlot(volcano_plot(load_data(), input$x_axis, input$y_axis, input$p_magnitude, input$base_point_col, input$highlight_col), height = 800, width = 1200) 
     
     # Same here, just return the table as you want to see it in the web page
-    output$table <- NULL # replace this NULL
+    output$table <- renderTable(draw_table(load_data(), input$p_magnitude))
 }
 
 # Run the application
